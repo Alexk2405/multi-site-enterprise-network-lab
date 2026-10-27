@@ -10,7 +10,7 @@ A multi site enterprise network developed in cisco packet tracer that uses multi
 * **VLANs and trunks:** The hq switch has four VLANs: 10 Staff, 20 Guest, 30 Servers, 40 Management. The branch switch has three: 10 Staff, 20 Guest, 40 Management. Each switch has a trunk to its router that allows only the VLANs it uses and the PC and server ports are access ports in their VLANs.
 * **Router on a stick:** Each router has one subinterface per VLAN on the port facing its switch and each with dot1Q encapsulation and the gateway address for that VLAN.
 * **DHCP:** Both routers run DHCP pools for the staff and guest VLANs with the gateway address excluded. Servers and management devices use static addresses.
-* **Management VLAN:** Each switch has a VLAN 40 interface with its own ip so I can manage it remotely via ssh. The routers can reach VLAN 40 through their subinterfaces.
+* **Management VLAN:** Each switch has a VLAN 40 interface with its own ip so I can manage it remotely via ssh or through the management pc. The routers can reach VLAN 40 through their subinterfaces.
 
 ### Addressing plan
 
@@ -56,8 +56,36 @@ The 10.0.0.0/24 block is divided into /27 subnets (255.255.255.224, 30 usable ho
 * **NAT inside and outside:** The ISP-facing port is `ip nat outside`. The four hq subinterfaces and the port toward the branch are `ip nat inside` so branch traffic is also translated.
 * **NAT ACL:** The standard ACL `NAT` permits 10.0.0.0/24. Using the whole /24 is just easier.
 
+## Phase 3: Port security, ACL's, Rapid PVST+
 
-## Screenshots of the network up and running
+### What I built
+
+
+* **SSH management:** All four devices (hq-router, b1-router, hq-switch, b1-switch) use SSH version 2 with a local admin account, an enable secret, password encryption, and a login banner. Telnet is disabled by allowing SSH only on the VTY lines.
+* **Restricted logins:** A standard ACL on the VTY lines of each device lets only the management PC and the network devices in the management VLAN open an SSH session.
+* **VLAN ACLs:** I put extended ACLs inbound on the Staff and Guest subinterfaces on both routers. Guests can reach the internet only. Staff can reach the internet, HQ server, and Staff at the other site but not the Guest networks, management VLAN, or the router link.
+* **Port security:** On the access ports I enabled sticky MAC learning, a max of 1 MAC address per port, and a violation mode of shutdown.
+* **Spanning tree:** Both switches use rapid PVST+, and the access ports use PortFast with BPDU Guard.
+* **Unused ports:** Unused switch ports are shut down.
+
+### Access control policy
+
+| Source | Internet | HQ Servers | Staff (other site) | Guest | Management | Router link |
+| --- | --- | --- | --- | --- | --- | --- |
+| Guest VLAN | Allowed | Blocked | Blocked | Own subnet only | Blocked | Blocked |
+| Staff VLAN | Allowed | Allowed | Allowed | Blocked | Blocked | Blocked |
+| Management PC (SSH) | Allowed | Allowed | Allowed | Allowed | Allowed | Allowed |
+
+### Design decisions
+
+* **Disabling unused ports:** This prevents someone from plugging a rogue device into an unused port on a switch.
+* **Port security with sticky MACs:** The switch learns the first device on each port automatically, so only that device can use it. The shutdown violation mode makes an unauthorized device obvious.
+* **PortFast and BPDU Guard:** PortFast lets end devices get link quickly and BPDU Guard shuts the port down if someone plugs in a switch. These are only on access ports.
+* **Extended ACLs close to the source:** Each ACL is inbound on the subinterface where the traffic enters so blocked packets are dropped immediately.
+* **Deny specific destination subnets:** Each ACL denies specific subnets instead of the whole 10.0.0.0/24, and leaves out the VLAN's own subnet, so hosts can still reach their gateway and renew DHCP.
+* **Two layers of protection:** The VLAN ACLs control traffic passing through the routers and the VTY ACLs control who can log in to each device.
+* **Limits of this design:** Router ACLs don't stop two hosts in the same VLAN from talking to each other. In a production network, I would also replace the shared local admin account with RADIUS and use a dedicated unused VLAN as the native VLAN.
+
 
 ## Authors
 
