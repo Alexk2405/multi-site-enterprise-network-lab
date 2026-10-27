@@ -771,6 +771,17 @@ end
 ```
 </details>
 
+## Troubleshooting
+
+### Fault 1: VLAN Not In Trunk Allowed List
+
+* **Symptom:** The staff pc on branch 1 could not reach the internet or connect to the hq site.
+* **Diagnosis:** I ran `ping 10.0.0.1` to ping the hq staff pc but that failed. I then ran `ping 10.0.0.129` to ping the default gateway but that also failed. After that, I decided to run ipconfig. Thst showed me that there was no IP address assigned to the pc. This showed me that there was an issue with the switch configuration as the pc was not able to get am IP address from the router.
+* **Root cause:** I opened up the configuration on the branch 1 switch and looked at the interface the pc was connected too. It showed it was in VLAN 10 which I noticed the trunk interface did not allow VLAN 10 to trunk. 
+* **Fix:** I ran `switchport trunk allowed vlan add 10` on the trunk interface to allow the VLAN access to the trunk.
+* **Verification:** From here I ran ipconfig to make sure we were getting an IP address. Then I pinged the default gateway and that was successful. Then I pinged the hq site staff pc to verify connectivity. I was then able to ping the internet using the staff pc.
+* **Lesson:** 
+
 ## Authors
 
 Alexander Kane
