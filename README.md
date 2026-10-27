@@ -3,6 +3,9 @@
 A multi site enterprise network developed in cisco packet tracer that uses multiple vlans, router-on-a-stick, OSPF, DHCP, NAT, ACLs, port security, and SSH hardening, with documented troubleshooting.
 
 ## Topology
+
+<img width="691" height="598" alt="Screenshot 2026-10-27 at 2 52 48 PM" src="https://github.com/user-attachments/assets/46875f5e-34a1-4532-80b7-bc9ef52c77ea" />
+
 ## Phase 1: VLANs, Gateways, and DHCP
 
 ### What I built
@@ -32,6 +35,7 @@ The 10.0.0.0/24 block is divided into /27 subnets (255.255.255.224, 30 usable ho
 * **Dedicated management VLAN:** Network devices sit in their own VLAN to be able to restrict users from accessing these devices if needed (probably a good idea to implement this).
 * **DHCP only where it helps:** Staff and Guest get addresses automatically while the server and network devices are static so their addresses never change.
 
+
 ## Phase 2: Routing, NAT, and Simulated Internet
 
 ### What I built
@@ -60,7 +64,6 @@ The 10.0.0.0/24 block is divided into /27 subnets (255.255.255.224, 30 usable ho
 
 ### What I built
 
-
 * **SSH management:** All four devices (hq-router, b1-router, hq-switch, b1-switch) use SSH version 2 with a local admin account, an enable secret, password encryption, and a login banner. Telnet is disabled by allowing SSH only on the VTY lines.
 * **Restricted logins:** A standard ACL on the VTY lines of each device lets only the management PC and the network devices in the management VLAN open an SSH session.
 * **VLAN ACLs:** I put extended ACLs inbound on the Staff and Guest subinterfaces on both routers. Guests can reach the internet only. Staff can reach the internet, HQ server, and Staff at the other site but not the Guest networks, management VLAN, or the router link.
@@ -86,6 +89,687 @@ The 10.0.0.0/24 block is divided into /27 subnets (255.255.255.224, 30 usable ho
 * **Two layers of protection:** The VLAN ACLs control traffic passing through the routers and the VTY ACLs control who can log in to each device.
 * **Limits of this design:** Router ACLs don't stop two hosts in the same VLAN from talking to each other. In a production network, I would also replace the shared local admin account with RADIUS and use a dedicated unused VLAN as the native VLAN.
 
+## Configurations
+
+<details>
+<summary>hq-router configuration</summary>
+
+```
+Current configuration : 3224 bytes
+!
+version 15.1
+no service timestamps log datetime msec
+no service timestamps debug datetime msec
+service password-encryption
+!
+hostname hq-router
+!
+!
+!
+enable secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+ip dhcp excluded-address 10.0.0.1
+ip dhcp excluded-address 10.0.0.33
+ip dhcp excluded-address 10.0.0.65
+ip dhcp excluded-address 10.0.0.97
+!
+ip dhcp pool staff
+ network 10.0.0.0 255.255.255.224
+ default-router 10.0.0.1
+ip dhcp pool guest
+ network 10.0.0.32 255.255.255.224
+ default-router 10.0.0.33
+!
+!
+!
+ip cef
+no ipv6 cef
+!
+!
+!
+username admin privilege 15 secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+license udi pid CISCO2911/K9 sn FTX152410SH-
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+ip ssh version 2
+ip domain-name hq-router.com
+!
+!
+spanning-tree mode pvst
+!
+!
+!
+!
+!
+!
+interface GigabitEthernet0/0
+ ip address 203.0.113.1 255.255.255.252
+ ip nat outside
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/1
+ ip address 10.0.0.225 255.255.255.252
+ ip ospf 1 area 0
+ ip nat inside
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/2
+ no ip address
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/2.1
+ description staff
+ encapsulation dot1Q 10
+ ip address 10.0.0.1 255.255.255.224
+ ip ospf 1 area 0
+ ip nat inside
+ ip access-group restrictStaff in
+!
+interface GigabitEthernet0/2.2
+ description guest
+ encapsulation dot1Q 20
+ ip address 10.0.0.33 255.255.255.224
+ ip ospf 1 area 0
+ ip nat inside
+ ip access-group restrictGuest in
+!
+interface GigabitEthernet0/2.3
+ description server
+ encapsulation dot1Q 30
+ ip address 10.0.0.65 255.255.255.224
+ ip ospf 1 area 0
+ ip nat inside
+!
+interface GigabitEthernet0/2.4
+ description management
+ encapsulation dot1Q 40 native
+ ip address 10.0.0.97 255.255.255.224
+ ip ospf 1 area 0
+ ip nat inside
+!
+interface Vlan1
+ no ip address
+ shutdown
+!
+router ospf 1
+ log-adjacency-changes
+ passive-interface default
+ no passive-interface GigabitEthernet0/1
+ default-information originate
+!
+ip nat inside source list NAT interface GigabitEthernet0/0 overload
+ip classless
+ip route 0.0.0.0 0.0.0.0 203.0.113.2 
+!
+ip flow-export version 9
+!
+!
+ip access-list standard NAT
+ permit 10.0.0.0 0.0.0.255
+ deny any
+ip access-list standard management
+ permit host 10.0.0.98
+ permit host 10.0.0.99
+ permit host 10.0.0.193
+ permit host 10.0.0.194
+ deny any
+ip access-list extended restrictGuest
+ deny ip any 10.0.0.0 0.0.0.31
+ deny ip any 10.0.0.64 0.0.0.31
+ deny ip any 10.0.0.96 0.0.0.31
+ deny ip any 10.0.0.128 0.0.0.31
+ deny ip any 10.0.0.160 0.0.0.31
+ deny ip any 10.0.0.192 0.0.0.31
+ deny ip any 10.0.0.224 0.0.0.31
+ permit ip any any
+ip access-list extended restrictStaff
+ deny ip any 10.0.0.32 0.0.0.31
+ deny ip any 10.0.0.96 0.0.0.31
+ deny ip any 10.0.0.160 0.0.0.31
+ deny ip any 10.0.0.192 0.0.0.31
+ deny ip any 10.0.0.224 0.0.0.31
+ permit ip any any
+!
+banner motd ^C
+***********************************************************************
+* AUTHORIZED ACCESS ONLY. ALL SESSIONS ARE MONITORED AND LOGGED.      *
+* DISCONNECT IMMEDIATELY IF YOU ARE NOT AN AUTHORIZED ADMINISTRATOR.  *
+************************************************================*******
+^C
+!
+!
+!
+!
+line con 0
+!
+line aux 0
+!
+line vty 0 4
+ access-class management in
+ login local
+ transport input ssh
+ transport output ssh
+!
+!
+!
+end
+```
+
+</details>
+
+<details>
+<summary>hq-switch configuration</summary>
+
+```
+
+Current configuration : 2992 bytes
+!
+version 15.0
+no service timestamps log datetime msec
+no service timestamps debug datetime msec
+service password-encryption
+!
+hostname hq-switch
+!
+enable secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+!
+ip ssh version 2
+ip domain-name hq-switch.com
+!
+username admin secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+!
+spanning-tree mode rapid-pvst
+spanning-tree extend system-id
+!
+interface FastEthernet0/1
+ description to staff
+ switchport access vlan 10
+ switchport mode access
+ switchport port-security mac-address sticky 
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface FastEthernet0/2
+ description to guest
+ switchport access vlan 20
+ switchport mode access
+ switchport port-security mac-address sticky 
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface FastEthernet0/3
+ description to servers
+ switchport access vlan 30
+ switchport mode access
+ switchport port-security mac-address sticky 
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface FastEthernet0/4
+ description management pc
+ switchport access vlan 40
+ switchport mode access
+ switchport port-security mac-address sticky 
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface FastEthernet0/5
+ shutdown
+!
+interface FastEthernet0/6
+ shutdown
+!
+interface FastEthernet0/7
+ shutdown
+!
+interface FastEthernet0/8
+ shutdown
+!
+interface FastEthernet0/9
+ shutdown
+!
+interface FastEthernet0/10
+ shutdown
+!
+interface FastEthernet0/11
+ shutdown
+!
+interface FastEthernet0/12
+ shutdown
+!
+interface FastEthernet0/13
+ shutdown
+!
+interface FastEthernet0/14
+ shutdown
+!
+interface FastEthernet0/15
+ shutdown
+!
+interface FastEthernet0/16
+ shutdown
+!
+interface FastEthernet0/17
+ shutdown
+!
+interface FastEthernet0/18
+ shutdown
+!
+interface FastEthernet0/19
+ shutdown
+!
+interface FastEthernet0/20
+ shutdown
+!
+interface FastEthernet0/21
+ shutdown
+!
+interface FastEthernet0/22
+ shutdown
+!
+interface FastEthernet0/23
+ shutdown
+!
+interface FastEthernet0/24
+ shutdown
+!
+interface GigabitEthernet0/1
+ description to hq-router
+ switchport access vlan 40
+ switchport trunk native vlan 40
+ switchport trunk allowed vlan 10,20,30,40
+ switchport mode trunk
+!
+interface GigabitEthernet0/2
+ shutdown
+!
+interface Vlan1
+ no ip address
+ shutdown
+!
+interface Vlan40
+ ip address 10.0.0.98 255.255.255.224
+!
+ip default-gateway 10.0.0.97
+!
+banner motd ^C
+***********************************************************************
+* AUTHORIZED ACCESS ONLY. ALL SESSIONS ARE MONITORED AND LOGGED.      *
+* DISCONNECT IMMEDIATELY IF YOU ARE NOT AN AUTHORIZED ADMINISTRATOR.  *
+************************************************================*******
+^C
+!
+!
+!
+ip access-list standard management
+ permit host 10.0.0.194
+ permit host 10.0.0.99
+ permit host 10.0.0.97
+ permit host 10.0.0.193
+ deny any
+line con 0
+!
+line vty 0 4
+ access-class management in
+ login local
+ transport input ssh
+ transport output ssh
+line vty 5 15
+ access-class management in
+ login local
+ transport input ssh
+ transport output ssh
+!
+!
+!
+!
+end
+```
+
+</details>
+
+<details>
+<summary>b1-router configuration</summary>
+
+```
+
+Current configuration : 2759 bytes
+!
+version 15.1
+no service timestamps log datetime msec
+no service timestamps debug datetime msec
+service password-encryption
+!
+hostname b1-router
+!
+!
+!
+enable secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+ip dhcp excluded-address 10.0.0.129
+ip dhcp excluded-address 10.0.0.193
+ip dhcp excluded-address 10.0.0.161
+!
+ip dhcp pool staff
+ network 10.0.0.128 255.255.255.224
+ default-router 10.0.0.129
+ip dhcp pool guest
+ network 10.0.0.160 255.255.255.224
+ default-router 10.0.0.161
+!
+!
+!
+ip cef
+no ipv6 cef
+!
+!
+!
+username admin privilege 15 secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+license udi pid CISCO2911/K9 sn FTX152482DX-
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+ip ssh version 2
+ip domain-name b1-router.com
+!
+!
+spanning-tree mode pvst
+!
+!
+!
+!
+!
+!
+interface GigabitEthernet0/0
+ ip address 10.0.0.226 255.255.255.252
+ ip ospf 1 area 0
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/1
+ no ip address
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/1.1
+ description staff
+ encapsulation dot1Q 10
+ ip address 10.0.0.129 255.255.255.224
+ ip ospf 1 area 0
+ ip access-group restrictStaff in
+!
+interface GigabitEthernet0/1.2
+ description guest
+ encapsulation dot1Q 20
+ ip address 10.0.0.161 255.255.255.224
+ ip ospf 1 area 0
+ ip access-group restrictGuest in
+!
+interface GigabitEthernet0/1.4
+ description management
+ encapsulation dot1Q 40 native
+ ip address 10.0.0.193 255.255.255.224
+ ip ospf 1 area 0
+!
+interface GigabitEthernet0/2
+ no ip address
+ duplex auto
+ speed auto
+ shutdown
+!
+interface Vlan1
+ no ip address
+ shutdown
+!
+router ospf 1
+ log-adjacency-changes
+ passive-interface default
+ no passive-interface GigabitEthernet0/0
+!
+ip classless
+!
+ip flow-export version 9
+!
+!
+ip access-list standard management
+ permit host 10.0.0.99
+ permit host 10.0.0.97
+ permit host 10.0.0.98
+ permit host 10.0.0.194
+ deny any
+ip access-list extended restrictGuest
+ deny ip any 10.0.0.0 0.0.0.31
+ deny ip any 10.0.0.32 0.0.0.31
+ deny ip any 10.0.0.64 0.0.0.31
+ deny ip any 10.0.0.96 0.0.0.31
+ deny ip any 10.0.0.128 0.0.0.31
+ deny ip any 10.0.0.192 0.0.0.31
+ deny ip any 10.0.0.224 0.0.0.3
+ permit ip any any
+ip access-list extended restrictStaff
+ deny ip any 10.0.0.32 0.0.0.31
+ deny ip any 10.0.0.96 0.0.0.31
+ deny ip any 10.0.0.160 0.0.0.31
+ deny ip any 10.0.0.192 0.0.0.31
+ deny ip any 10.0.0.224 0.0.0.31
+ permit ip any any
+!
+banner motd ^C
+***********************************************************************
+* AUTHORIZED ACCESS ONLY. ALL SESSIONS ARE MONITORED AND LOGGED.      *
+* DISCONNECT IMMEDIATELY IF YOU ARE NOT AN AUTHORIZED ADMINISTRATOR.  *
+************************************************================*******
+^C
+!
+!
+!
+!
+line con 0
+!
+line aux 0
+!
+line vty 0 4
+ access-class management in
+ login local
+ transport input ssh
+ transport output ssh
+!
+!
+!
+end
+```
+</details>
+
+<details>
+<summary>b1-switch configuration</summary>
+
+```
+Building configuration...
+
+Current configuration : 2556 bytes
+!
+version 15.0
+no service timestamps log datetime msec
+no service timestamps debug datetime msec
+service password-encryption
+!
+hostname b1-switch
+!
+enable secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+!
+ip ssh version 2
+ip domain-name b1-switch.com
+!
+username admin secret 5 $1$mERr$7n6je7c9FKvO.o.40Rj1Q0
+!
+!
+!
+spanning-tree mode rapid-pvst
+spanning-tree extend system-id
+!
+interface FastEthernet0/1
+ switchport access vlan 10
+ switchport mode access
+ switchport port-security mac-address sticky 
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface FastEthernet0/2
+ switchport access vlan 20
+ switchport mode access
+ switchport port-security mac-address sticky 
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface FastEthernet0/3
+ shutdown
+!
+interface FastEthernet0/4
+ shutdown
+!
+interface FastEthernet0/5
+ shutdown
+!
+interface FastEthernet0/6
+ shutdown
+!
+interface FastEthernet0/7
+ shutdown
+!
+interface FastEthernet0/8
+ shutdown
+!
+interface FastEthernet0/9
+ shutdown
+!
+interface FastEthernet0/10
+ shutdown
+!
+interface FastEthernet0/11
+ shutdown
+!
+interface FastEthernet0/12
+ shutdown
+!
+interface FastEthernet0/13
+ shutdown
+!
+interface FastEthernet0/14
+ shutdown
+!
+interface FastEthernet0/15
+ shutdown
+!
+interface FastEthernet0/16
+ shutdown
+!
+interface FastEthernet0/17
+ shutdown
+!
+interface FastEthernet0/18
+ shutdown
+!
+interface FastEthernet0/19
+ shutdown
+!
+interface FastEthernet0/20
+ shutdown
+!
+interface FastEthernet0/21
+ shutdown
+!
+interface FastEthernet0/22
+ shutdown
+!
+interface FastEthernet0/23
+ shutdown
+!
+interface FastEthernet0/24
+ shutdown
+!
+interface GigabitEthernet0/1
+ switchport trunk native vlan 40
+ switchport trunk allowed vlan 10,20,40
+ switchport mode trunk
+!
+interface GigabitEthernet0/2
+ shutdown
+!
+interface Vlan1
+ no ip address
+ shutdown
+!
+interface Vlan40
+ ip address 10.0.0.194 255.255.255.224
+!
+ip default-gateway 10.0.0.193
+!
+banner motd ^C
+***********************************************************************
+* AUTHORIZED ACCESS ONLY. ALL SESSIONS ARE MONITORED AND LOGGED.      *
+* DISCONNECT IMMEDIATELY IF YOU ARE NOT AN AUTHORIZED ADMINISTRATOR.  *
+************************************************================*******
+^C
+!
+!
+!
+ip access-list standard management
+ permit host 10.0.0.99
+ permit host 10.0.0.193
+ permit host 10.0.0.97
+ permit host 10.0.0.98
+ deny any
+line con 0
+!
+line vty 0 4
+ access-class management in
+ login local
+ transport input ssh
+ transport output ssh
+line vty 5 15
+ access-class management in
+ login local
+ transport input ssh
+ transport output ssh
+!
+!
+!
+!
+end
+```
+</details>
 
 ## Authors
 
