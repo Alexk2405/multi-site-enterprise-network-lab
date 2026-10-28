@@ -773,14 +773,49 @@ end
 
 ## Troubleshooting
 
-### Fault 1: VLAN Not In Trunk Allowed List
+### Fault 1: VLAN Missing from the Trunk Allowed List
 
-* **Symptom:** The staff pc on branch 1 could not reach the internet or connect to the hq site.
-* **Diagnosis:** I ran `ping 10.0.0.1` to ping the hq staff pc but that failed. I then ran `ping 10.0.0.129` to ping the default gateway but that also failed. After that, I decided to run ipconfig. Thst showed me that there was no IP address assigned to the pc. This showed me that there was an issue with the switch configuration as the pc was not able to get am IP address from the router.
-* **Root cause:** I opened up the configuration on the branch 1 switch and looked at the interface the pc was connected too. It showed it was in VLAN 10 which I noticed the trunk interface did not allow VLAN 10 to trunk. 
-* **Fix:** I ran `switchport trunk allowed vlan add 10` on the trunk interface to allow the VLAN access to the trunk.
-* **Verification:** From here I ran ipconfig to make sure we were getting an IP address. Then I pinged the default gateway and that was successful. Then I pinged the hq site staff pc to verify connectivity. I was then able to ping the internet using the staff pc.
-* **Lesson:** 
+* **Symptom:** The Staff PC at the branch could not reach the HQ site or the internet.
+* **Diagnosis:**
+  1. I pinged the branch gateway (`ping 10.0.0.129`), which failed.
+  2. I pinged the HQ Staff gateway (`ping 10.0.0.1`), which also failed.
+  3. I ran `ipconfig` on the PC and found it had no IP address, so it was not receiving a DHCP lease from the router.
+  4. A PC that cannot get an address while the router is working points to a Layer 2 problem, so I moved to the branch switch.
+  5. I checked the switch configuration. The PC's port was in VLAN 10, but the trunk toward the router did not allow VLAN 10.
+* **Root cause:** VLAN 10 was missing from the trunk's allowed VLAN list, so DHCP requests and traffic from the Staff VLAN never reached the router.
+* **Fix:** On the trunk interface of the branch switch, I ran `switchport trunk allowed vlan add 10`.
+* **Verification:**
+  1. `ipconfig` showed the PC received an IP address.
+  2. I pinged the branch gateway successfully.
+  3. I pinged the HQ Staff PC successfully.
+  4. I pinged the internet (198.51.100.10) successfully.
+
+<details>
+ <summary>Images</summary>
+ <img width="566" height="747" alt="Branch switch trunk and troubleshooting output for Fault 1" src="https://github.com/user-attachments/assets/c4dcf03a-2445-47ea-8201-e4e435878460" />
+</details>
+
+### Fault 2: Mismatched OSPF Timers
+
+* **Symptom:** The Staff PC at the branch could not reach the HQ Staff network or the internet, but it could still reach its own gateway.
+* **Diagnosis:**
+  1. I pinged the branch gateway (`ping 10.0.0.129`), which succeeded, so the local network was healthy.
+  2. From the branch router, I pinged across the link to the HQ router, which also succeeded. The physical link and addressing were fine.
+  3. I pinged the HQ Staff gateway (`ping 10.0.0.1`) from the PC, which failed. The problem was routing, not the link.
+  4. On the branch router, I ran `show ip route` and found no OSPF routes, so the branch had learned nothing from HQ (including the default route to the internet).
+  5. I ran `show ip ospf interface` for the link on both routers and found the hello and dead timers did not match.
+* **Root cause:** The hello and dead timers on the branch router's link interface did not match the HQ router's. OSPF routers with mismatched timers will not form a neighbor relationship, so no routes were exchanged.
+* **Fix:** On the branch router's link interface, I ran `ip ospf hello-interval 10` and `ip ospf dead-interval 40` to match the HQ router.
+* **Verification:**
+  1. `show ip route` on the branch router listed the OSPF routes to HQ.
+  2. The Staff PC could ping the HQ Staff network.
+  3. The Staff PC could reach the internet.
+
+<details>
+ <summary>Images</summary>
+ <img width="654" height="483" alt="OSPF interface output showing the timer mismatch" src="https://github.com/user-attachments/assets/d994431d-d3f7-4667-ba8a-5e108f9c4aa2" />
+ <img width="654" height="483" alt="Branch routing table with OSPF routes after the fix" src="https://github.com/user-attachments/assets/342ec594-53c8-4175-87d8-d89966adf52b" />
+</details>
 
 ## Authors
 
